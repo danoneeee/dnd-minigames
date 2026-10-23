@@ -1,0 +1,800 @@
+<title>Красный глаз</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+SC:wght@500;700&family=PT+Serif:ital,wght@0,400;0,700;1,400&family=Marck+Script&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+/* Layout: one-screen arcade — HUD strip, square stage with the brass cage, panel beneath. Deliberately single dark theme (a lightless ward). */
+:root {
+  color-scheme: dark;
+  --bg: #0c0a0a;
+  --panel: #16110f;
+  --line: #3a2c22;
+  --ink: #e8dfcf;
+  --muted: #a3967f;
+  --brass: #b98a42;
+  --brass-hi: #e7c06e;
+  --blood: #b3261e;
+  --glow: #ff4b36;
+  --ok: #8fb27a;
+  --f-display: "Cormorant SC", "Cormorant Garamond", Georgia, serif;
+  --f-body: "PT Serif", Georgia, "Times New Roman", serif;
+  --f-mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+}
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+body { background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 16px; line-height: 1.45; overflow-x: hidden; }
+.app {
+  max-width: 560px; margin: 0 auto; min-height: 100%;
+  display: flex; flex-direction: column; gap: 12px;
+  padding-block: 12px 20px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+button { font: inherit; color: inherit; }
+button:focus-visible { outline: 2px solid var(--brass-hi); outline-offset: 2px; }
+
+.hud { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.hud h1 { margin: 0; font-family: var(--f-display); font-weight: 700; font-size: 1.5rem; letter-spacing: .04em; color: var(--brass-hi); }
+.hud .tools { display: flex; gap: 8px; }
+.iconbtn { background: transparent; border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; font-family: var(--f-mono); font-size: .75rem; color: var(--muted); cursor: pointer; }
+.iconbtn:hover { color: var(--ink); border-color: var(--brass); }
+
+.status { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; min-height: 28px; font-family: var(--f-mono); font-size: .85rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.status b { color: var(--ink); }
+.status .phase { color: var(--brass-hi); letter-spacing: .08em; text-transform: uppercase; font-size: .72rem; }
+.status .sent b { color: var(--glow); }
+.status .saved b { color: var(--ok); }
+
+.stage {
+  position: relative; width: min(100%, 520px, 60vh); width: min(100%, 520px, 60dvh);
+  aspect-ratio: 1; max-width: 100%; margin: 0 auto; border-radius: 10px; overflow: hidden;
+  background: radial-gradient(circle at 50% 42%, #24110e 0%, #120c0b 55%, #0a0808 100%);
+  border: 1px solid var(--line); touch-action: manipulation; cursor: crosshair;
+  user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent;
+}
+.stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.stage.shake { animation: shake .4s; }
+.stage.flash::after { content: ""; position: absolute; inset: 0; background: var(--glow); opacity: 0; animation: flash .45s; pointer-events: none; }
+.stage.flashok::after { content: ""; position: absolute; inset: 0; background: var(--brass-hi); opacity: 0; animation: flash .35s; pointer-events: none; }
+@keyframes shake { 0%,100% { transform: translate(0,0); } 25% { transform: translate(-5px,3px); } 50% { transform: translate(5px,-3px); } 75% { transform: translate(-3px,-2px); } }
+@keyframes flash { 0% { opacity: .3; } 100% { opacity: 0; } }
+
+.overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; text-align: center; padding: 24px; background: rgba(8,6,6,.72); z-index: 5; }
+.overlay h2 { margin: 0; font-family: var(--f-display); font-size: 2rem; color: var(--brass-hi); text-wrap: balance; }
+.overlay p { margin: 0; max-width: 32ch; }
+.overlay .big { font-family: var(--f-display); font-size: 3.2rem; color: var(--glow); line-height: 1; min-height: 1em; }
+
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.panel h3 { margin: 0; font-family: var(--f-display); font-size: 1.25rem; color: var(--brass-hi); }
+.panel p { margin: 0; }
+.panel .sub { color: var(--muted); font-size: .92rem; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.btn { background: #241a15; border: 1px solid var(--brass); color: var(--ink); border-radius: 6px; padding: 9px 14px; cursor: pointer; font-size: .95rem; line-height: 1.2; }
+.btn:hover:not(:disabled) { background: #33241b; border-color: var(--brass-hi); }
+.btn.primary { background: var(--brass); color: #1a120c; border-color: var(--brass-hi); font-weight: 700; }
+.btn.primary:hover { background: var(--brass-hi); }
+.btn.cut { width: 100%; padding: 16px; font-family: var(--f-display); font-size: 1.4rem; letter-spacing: .06em; background: #3a1410; border-color: var(--glow); color: var(--ink); touch-action: manipulation; }
+.btn.cut:active { background: var(--blood); }
+.btn.good { border-color: var(--ok); }
+.btn.bad { border-color: var(--blood); }
+.btn small { display: block; color: var(--muted); font-size: .75rem; margin-top: 2px; }
+.btn { text-align: left; }
+.panel .note { font-style: italic; border-left: 2px solid var(--brass); padding-left: 10px; }
+.btn.ghost { background: transparent; border-color: var(--line); color: var(--muted); }
+
+.rules { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 6px; }
+.rules li::marker { color: var(--brass); font-family: var(--f-mono); }
+.rules b { color: var(--brass-hi); }
+.opt { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer; }
+.opt:has(input:checked) { border-color: var(--brass); background: #1f1713; }
+.opt input { margin-top: 4px; accent-color: var(--brass); }
+.opt b { display: block; }
+.opt span { color: var(--muted); font-size: .88rem; }
+
+.feed { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: .9rem; }
+.feed li { color: var(--muted); }
+.feed li:first-child { color: var(--ink); }
+.feed li .k { font-family: var(--f-mono); font-size: .75rem; margin-right: 6px; }
+.feed li.sent .k { color: var(--glow); }
+.feed li.burn .k { color: var(--ok); }
+
+.results { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.results > div { min-width: 0; }
+.results h4 { margin: 0 0 6px; font-family: var(--f-mono); font-size: .72rem; letter-spacing: .1em; text-transform: uppercase; }
+.results .s h4 { color: var(--glow); }
+.results .k h4 { color: var(--ok); }
+.results ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; font-size: .88rem; }
+.results li span { color: var(--muted); }
+.dmnote { border-top: 1px solid var(--line); padding-top: 10px; color: var(--muted); font-size: .88rem; }
+.dmnote b { color: var(--ink); }
+@media (max-width: 380px) { .results { grid-template-columns: 1fr; } }
+
+.sheet { position: fixed; inset: 0; z-index: 20; background: rgba(5,4,4,.88); display: flex; align-items: center; justify-content: center;
+  padding: 20px max(16px, env(safe-area-inset-right, 0px)) 20px max(16px, env(safe-area-inset-left, 0px)); }
+.sheet .card { background: var(--panel); border: 1px solid var(--brass); border-radius: 10px; padding: 18px; max-width: 420px; width: 100%; max-height: 100%; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
+.sheet h3 { margin: 0; font-family: var(--f-display); color: var(--brass-hi); font-size: 1.3rem; }
+@media (prefers-reduced-motion: reduce) { .stage.shake, .stage.flash::after, .stage.flashok::after { animation: none; } }
+</style>
+
+<div class="app">
+  <header class="hud">
+    <h1>Красный глаз</h1>
+    <div class="tools">
+      <button class="iconbtn" id="muteBtn" type="button" aria-pressed="false">Звук: вкл</button>
+      <button class="iconbtn" id="rulesBtn" type="button">Правила</button>
+    </div>
+  </header>
+  <div class="status" id="status" hidden></div>
+  <div class="stage" id="stage">
+    <canvas id="cv"></canvas>
+    <div id="stageOverlay"></div>
+  </div>
+  <section class="panel" id="panel"></section>
+</div>
+
+<div class="sheet" id="rulesSheet" hidden>
+  <div class="card">
+    <h3>Как играть</h3>
+    <ol class="rules">
+      <li><b>Вскрой клетку.</b> По ходам: 5 штифтов за 6 ходов.</li>
+      <li><b>Порви нити.</b> 3 нажатия на нить. Не трогай ту, на которую смотрит луч.</li>
+      <li><b>Сожги досье.</b> Жми по птицам. Золотая печать — 2 раза.</li>
+      <li><b>Чёрную печать не трогай</b> — это досье на Брога.</li>
+    </ol>
+    <button class="btn ghost" id="rulesClose" type="button">Понятно</button>
+  </div>
+</div>
+
+<script>
+(() => {
+  // [имя на конверте, роль, важное досье (золотая печать, 2 нажатия)]
+  const AGENTS = [
+    ['Вискас', 'табакси-плут, друг героев', 1], ['Бобби', 'кот в доспехах', 1], ['Феликс', 'помощник Вискаса', 1],
+    ['Грустный квадрат', 'бывший глава Красного глаза', 1],
+    ['Мира', 'сигнальщица маяка'], ['Гарт', 'вышибала'], ['Вдова Ольса', 'скупщица краденого'], ['Сыч', 'наводчик'],
+    ['Ленни', 'взломщик'], ['Рыжая Тэсс', 'связная'], ['Брат Михей', 'подделывает бумаги'], ['Кривой Ян', 'контрабанда по реке'],
+    ['Лиса', 'шантаж'], ['Пип', 'гонец'], ['Мадам Вера', 'игорный дом'], ['Гнус', 'слушает канализацию'],
+    ['Борода', 'подпольная кузня'], ['Сестра Нелли', 'лекарь банды'], ['Оскар Тихий', 'бывший убийца'], ['Ковыль', 'лодочник'],
+    ['Часовщик', 'тайники в часах'], ['Щербатый Нил', 'подпольные карты'], ['Тётя Марго', 'держит ночлежку'], ['Гвоздь', 'выбивает долги'],
+    ['Хромая Агнес', 'торгует слухами'], ['Сёстры Рен', 'карманницы'], ['Тарас Мешок', 'грузчик в порту'], ['Тень', 'наёмный вор'],
+    ['Ферн', 'алхимик-самоучка'], ['Дядя Сол', 'ростовщик'], ['Хорёк', 'форточник'], ['Капитан Брусок', 'стражник на подкупе']
+  ];
+  const BROG = ['Брог', 'досье на главаря'];
+  const N_THREADS = 5, THREAD_HP = 3, CONE = .5;
+  const CX = .5, CY = .42, CAGE_R = .15;
+  const WINDOWS = [{ x: .07, y: .5 }, { x: .93, y: .5 }];
+
+  const $ = id => document.getElementById(id);
+  const stage = $('stage'), cv = $('cv'), ctx = cv.getContext('2d');
+  const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let S = 400, dpr = 1, st = null;
+  const pick = (e, n, h) => !st || !st.diff ? n : st.diff < 0 ? e : h;
+  const pointer = { x: .5, y: .5 };
+
+  // ---------- audio ----------
+  let ac = null, master = null, muted = false;
+  function audioInit() {
+    if (ac) return;
+    try {
+      ac = new (window.AudioContext || window.webkitAudioContext)();
+      master = ac.createGain(); master.gain.value = muted ? 0 : 1; master.connect(ac.destination);
+      const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 240;
+      const g = ac.createGain(); g.gain.value = .03; lp.connect(g); g.connect(master);
+      [55, 55.8, 82.4].forEach(f => { const o = ac.createOscillator(); o.type = 'sawtooth'; o.frequency.value = f; o.connect(lp); o.start(); });
+    } catch (e) { ac = null; }
+  }
+  function tone(freq, type, dur, vol, slideTo) {
+    if (!ac) return;
+    const t = ac.currentTime, o = ac.createOscillator(), g = ac.createGain();
+    o.type = type; o.frequency.setValueAtTime(freq, t);
+    if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, t + dur);
+    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+    o.connect(g); g.connect(master); o.start(t); o.stop(t + dur + .05);
+  }
+  function noise(dur, vol, freq, type) {
+    if (!ac) return;
+    const len = Math.floor(ac.sampleRate * dur), buf = ac.createBuffer(1, len, ac.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2);
+    const src = ac.createBufferSource(); src.buffer = buf;
+    const f = ac.createBiquadFilter(); f.type = type || 'highpass'; f.frequency.value = freq;
+    const g = ac.createGain(); g.gain.value = vol; src.connect(f); f.connect(g); g.connect(master); src.start();
+  }
+  const sFray = () => { noise(.08, .25, 3500); tone(900 + Math.random() * 300, 'triangle', .08, .05); };
+  const sSnap = () => { noise(.2, .5, 2200); tone(1200, 'sine', .35, .1); };
+  const sCaught = () => { tone(140, 'sawtooth', .4, .18, 55); noise(.3, .2, 400, 'lowpass'); };
+  const sPulse = () => tone(80, 'sine', .5, .25, 45);
+  const sLaunch = () => noise(.22, .1, 900, 'bandpass');
+  const sBurn = () => { noise(.3, .3, 3000); tone(500, 'triangle', .15, .05, 900); };
+  const sSeal = () => { noise(.12, .3, 1800); tone(700, 'square', .08, .05); };
+  const sSent = () => { tone(196, 'sine', .7, .12); tone(233, 'sine', .7, .05); };
+  const sWin = () => { tone(660, 'sine', .8, .12); setTimeout(() => tone(990, 'sine', .9, .1), 180); };
+  $('muteBtn').onclick = () => {
+    muted = !muted; if (master) master.gain.value = muted ? 0 : 1;
+    $('muteBtn').textContent = muted ? 'Звук: выкл' : 'Звук: вкл'; $('muteBtn').setAttribute('aria-pressed', String(muted));
+  };
+  $('rulesBtn').onclick = () => { $('rulesSheet').hidden = false; };
+  $('rulesClose').onclick = () => { $('rulesSheet').hidden = true; };
+
+  const rnd = (a, b) => a + Math.random() * (b - a);
+  const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+  const angDiff = (a, b) => Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)));
+  function bump(cls) { stage.classList.remove('shake', 'flash', 'flashok'); void stage.offsetWidth; cls.split(' ').forEach(c => stage.classList.add(c)); }
+
+  // ---------- game ----------
+  function makeThreads() {
+    const base = rnd(0, 6.28), th = [];
+    for (let i = 0; i < N_THREADS; i++) {
+      const ang = base + i * (Math.PI * 2 / N_THREADS) + rnd(-.25, .25);
+      // end of the thread: as far as the square stage allows in that direction
+      const dx = Math.cos(ang), dy = Math.sin(ang);
+      const tx = dx > 0 ? (.97 - CX) / dx : (.03 - CX) / dx, ty = dy > 0 ? (.97 - CY) / dy : (.03 - CY) / dy;
+      const len = Math.min(Math.abs(tx), Math.abs(ty), .5);
+      th.push({ ang, len, hp: THREAD_HP, cut: false, cutT: 0, wob: rnd(0, 6.28) });
+    }
+    return th;
+  }
+
+  // ---------- part 0: the lock (turn-based) ----------
+  const LOCK_TURNS = 6, LOCK_NEED = 5;
+  // effects: dmg (text for the DM), minus (−1 pin), leak (one dossier leaves early), dcUp (next card DC +2), lose (lose next turn), adv (advantage next roll)
+  const DECK = [
+    { title: 'Охранная руна', text: 'На замке вспыхивает руна.', opts: [
+      { label: 'Разобрать плетение', check: 'Магия', dc: 14, gain: 2, fail: { dmg: '2к6 урона силовым полем' } },
+      { label: 'Аккуратно обойти руну', check: 'Ловкость рук', dc: 13, gain: 1, fail: {} },
+      { label: 'Рассеять магию', auto: 'тратит ячейку 3 уровня', gain: 2 } ] },
+    { title: 'Взведённая пружина', text: 'Внутри взведена пружина с шипом.', opts: [
+      { label: 'Зажать её силой', check: 'Атлетика', dc: 13, gain: 1, fail: { dmg: '1к10 колющего' } },
+      { label: 'Разобрать механизм', check: 'Ловкость рук', dc: 15, gain: 2, fail: { minus: 1, dmg: '1к6 колющего' } } ] },
+    { title: 'Глаз следит за руками', text: 'Зрачок следит за пальцами Картера.', opts: [
+      { label: 'Выдержать взгляд', check: 'спас Мудрости', dc: 14, gain: 1, fail: { dcUp: 1 } },
+      { label: 'Накрыть клетку плащом', check: 'Ловкость', dc: 12, gain: 1, fail: {} },
+      { label: 'Отвлечь иллюзией', check: 'Обман или Магия', dc: 13, gain: 2, fail: { minus: 1 } } ] },
+    { title: 'Шифр на латуни', text: 'На ободе полустёртый шифр.', opts: [
+      { label: 'Расшифровать', check: 'Расследование', dc: 14, gain: 2, fail: { lose: 1 } },
+      { label: 'Опознать клеймо мастера', check: 'История', dc: 15, gain: 1, fail: {}, win: { adv: 1 } },
+      { label: 'Подобрать наугад', check: 'бросок монетки: орёл — успех', dc: 0, gain: 1, fail: { minus: 1 } } ] },
+    { title: 'Первая птица', text: 'Глаз пробует перо: на чистой птице проступают буквы.', opts: [
+      { label: 'Выхватить птицу', check: 'Ловкость', dc: 13, gain: 1, fail: { leak: 1 } },
+      { label: 'Зажать нить-перо', check: 'Атлетика', dc: 14, gain: 2, fail: { leak: 1 } } ] },
+    { title: 'Перегрев', text: 'Латунь раскаляется докрасна.', opts: [
+      { label: 'Остудить механизм', check: 'Природа или заклинание холода', dc: 13, gain: 1, fail: { dmg: '2к6 огнём' } },
+      { label: 'Терпеть и работать', check: 'спас Телосложения', dc: 14, gain: 2, fail: { dmg: '2к6 огнём', minus: 1 } } ] },
+    { title: 'Голос Брога', text: 'Голос Брога: «Тронешь клетку, книжник, — сам окажешься в досье».', opts: [
+      { label: 'Не слушать', check: 'спас Мудрости', dc: 13, gain: 1, fail: { lose: 1 } },
+      { label: 'Найти, откуда звук', check: 'Восприятие', dc: 14, gain: 2, fail: {} } ] },
+    { title: 'Знакомый механизм', text: 'Такой же замок стоял в музее отца.', opts: [
+      { label: 'Вспомнить устройство', check: 'Магия', dc: 12, gain: 2, fail: { dcUp: 1 } },
+      { label: 'Подключить свой артефакт', auto: 'отдача: 1к6 психического Картеру', gain: 2 } ] },
+    { title: 'Ложный штифт', text: 'Штифт поддаётся подозрительно легко.', opts: [
+      { label: 'Проверить, нет ли ловушки', check: 'Расследование', dc: 13, gain: 1, fail: { minus: 1 } },
+      { label: 'Рискнуть и дожать', check: 'Ловкость рук', dc: 16, gain: 2, fail: { minus: 1, dmg: '1к8 колющего' } } ] }
+  ];
+
+  function newGame() {
+    st = {
+      phase: 'lock', diff: 0,
+      lock: { turn: 1, pins: 0, deck: shuffle(DECK.slice()), card: null, step: 'choose', opt: null, res: '', dcUp: 0, adv: 0, lose: 0, leak: 0, lastPins: 0 },
+      eyeOpen: .85, blinkT: 3, blinking: 0, cageOpen: 0, feed: [], embers: [], letters: [], sent: [], burned: [],
+      pool: shuffle(AGENTS.map(a => ({ name: a[0], role: a[1], vip: !!a[2], brog: false })))
+    };
+    drawCard();
+    renderAll();
+  }
+  function drawCard() {
+    const L = st.lock;
+    L.card = L.deck.shift() || shuffle(DECK.slice())[0];
+    L.opt = null; L.res = '';
+    if (L.lose) { L.lose = 0; L.step = 'lost'; } else L.step = 'choose';
+  }
+  function chooseOpt(i) {
+    const L = st.lock, o = L.card.opts[i];
+    L.opt = o;
+    if (o.auto) resolveOpt(true); else { L.step = 'roll'; renderPanel(); }
+  }
+  function resolveOpt(ok) {
+    const L = st.lock, o = L.opt, lines = [];
+    const usedAdv = L.adv; L.adv = 0; L.dcUp = 0;
+    if (ok) {
+      L.pins = Math.min(LOCK_NEED, L.pins + o.gain); sSnap(); bump('flashok');
+      lines.push(`Штифты +${o.gain}.`);
+      if (o.auto) lines.push(o.auto[0].toUpperCase() + o.auto.slice(1) + '.');
+      if (o.win && o.win.adv) { L.adv = 1; lines.push('Следующий бросок — с преимуществом.'); }
+    } else {
+      const f = o.fail || {};
+      sCaught(); bump('shake');
+      lines.push('Провал.');
+      if (f.dmg) lines.push(`Картеру: ${f.dmg}.`);
+      if (f.minus && L.pins > 0) { L.pins = Math.max(0, L.pins - f.minus); lines.push('Штифт −1.'); }
+      if (f.leak) { L.leak++; lines.push('Одно досье ушло.'); }
+      if (f.dcUp) { L.dcUp = 2; lines.push('Следующая СЛ +2.'); }
+      if (f.lose) { L.lose = 1; lines.push('Следующий ход потерян.'); }
+      if (lines.length === 1) lines.push('Ход потрачен.');
+    }
+    if (usedAdv) lines.push('(Преимущество потрачено.)');
+    L.res = lines.join(' ');
+    L.step = 'result';
+    renderAll();
+  }
+  function nextLockTurn() {
+    const L = st.lock;
+    if (L.pins >= LOCK_NEED) { openLock(true); return; }
+    if (L.turn >= LOCK_TURNS) { openLock(false); return; }
+    L.turn++; tone(440, 'square', .06, .04);
+    drawCard(); renderAll();
+  }
+  function openLock(success) {
+    const L = st.lock;
+    st.diff = success ? (L.turn <= 4 ? -1 : 0) : 1;
+    for (let i = 0; i < L.leak + (success ? 0 : 3); i++) leakOne('ушло, пока Картер возился с замком');
+    st.phase = 'opened'; renderAll();
+  }
+
+  function startArcade() {
+    Object.assign(st, {
+      phase: 'cut', threads: makeThreads(), gaze: rnd(0, 6.28), gazeV: pick(1.0, 1.4, 1.8) * (Math.random() < .5 ? -1 : 1), flipT: rnd(1.2, 2.5),
+      pulseEvery: pick(7, 5.5, 4.5), pulseT: pick(7, 5.5, 4.5), pulseAnim: 0, caughtT: 0, lockUntil: 0,
+      letters: [], embers: [], brogSent: false, brogBurned: false,
+      spawnT: .8, spawned: 0, total: AGENTS.length + 1, countdown: 0
+    });
+    renderAll();
+  }
+
+  function leakOne(reason) {
+    // VIPs leak last in phase 1 so the big names matter in phase 2
+    let idx = st.pool.findIndex(a => !a.vip);
+    if (idx < 0) idx = 0;
+    const a = st.pool.splice(idx, 1)[0];
+    if (a) { st.sent.push(a); pushFeed('sent', `${a.name} — ${reason}`); }
+  }
+
+  function segDist(px, py, th) {
+    const sx = CX + Math.cos(th.ang) * CAGE_R * 1.05, sy = CY + Math.sin(th.ang) * CAGE_R * 1.05;
+    const ex = CX + Math.cos(th.ang) * th.len, ey = CY + Math.sin(th.ang) * th.len;
+    const vx = ex - sx, vy = ey - sy, t = Math.max(0, Math.min(1, ((px - sx) * vx + (py - sy) * vy) / (vx * vx + vy * vy)));
+    return { d: Math.hypot(px - (sx + vx * t), py - (sy + vy * t)), x: sx + vx * t, y: sy + vy * t };
+  }
+
+  function tapThread(px, py) {
+    if (performance.now() < st.lockUntil) return;
+    let best = null, bd = .06, hit = null;
+    st.threads.forEach(th => { if (th.cut) return; const r = segDist(px, py, th); if (r.d < bd) { bd = r.d; best = th; hit = r; } });
+    if (!best) return;
+    if (angDiff(best.ang, st.gaze) < CONE) {
+      // caught by the eye
+      st.caughtT = .6; st.lockUntil = performance.now() + 700;
+      leakOne('глаз заметил');
+      sCaught(); bump('shake flash');
+      renderStatus(); renderPanel();
+      return;
+    }
+    best.hp--;
+    for (let i = 0; i < 6; i++) st.embers.push({ x: hit.x, y: hit.y, vx: rnd(-.2, .2), vy: rnd(-.2, .1), a: 1, c: '255,200,120' });
+    if (best.hp <= 0) {
+      best.cut = true; best.cutT = 0; sSnap(); bump('flashok');
+      if (st.threads.every(t => t.cut)) { toCatch(); return; }
+      st.gazeV *= 1.15;
+    } else sFray();
+    renderStatus();
+  }
+
+  function toCatch() {
+    st.phase = 'ready'; st.countdown = 3;
+    const pos = Math.floor(st.pool.length * rnd(.4, .8));
+    st.pool.splice(pos, 0, { name: BROG[0], role: BROG[1], brog: true, vip: false });
+    st.total = st.pool.length;
+    renderAll();
+    const tick = () => {
+      if (!st || st.phase !== 'ready') return;
+      st.countdown--; tone(440, 'square', .08, .05);
+      if (st.countdown <= 0) { st.phase = 'catch'; renderAll(); }
+      else { renderOverlay(); setTimeout(tick, 700); }
+    };
+    setTimeout(tick, 900);
+  }
+
+  function spawnLetter() {
+    const a = st.pool.shift(); if (!a) return;
+    const w = WINDOWS[Math.random() < .5 ? 0 : 1];
+    const prog = st.spawned / st.total;
+    st.letters.push({
+      a, t: 0, dur: Math.max(1.15, pick(3.0, 2.5, 2.1) - prog * 1.1) * (a.vip ? 1.15 : 1),
+      sx: CX + rnd(-.03, .03), sy: CY + .02, ex: w.x, ey: w.y + rnd(-.18, .18), cx: rnd(.15, .85), cy: rnd(.02, .98),
+      zig: Math.random() < .2 + prog * .3 ? rnd(.04, .08) : 0, rot: rnd(-.4, .4), spin: rnd(-2, 2),
+      hp: a.vip ? 2 : 1, burning: 0, gone: false, hitFlash: 0
+    });
+    st.spawned++; sLaunch();
+  }
+
+  function letterPos(l) {
+    const t = Math.min(1, l.t), u = 1 - t;
+    let x = u * u * l.sx + 2 * u * t * l.cx + t * t * l.ex, y = u * u * l.sy + 2 * u * t * l.cy + t * t * l.ey;
+    if (l.zig) y += Math.sin(t * 22) * l.zig * Math.sin(t * Math.PI);
+    return { x, y };
+  }
+
+  function hitLetter(px, py) {
+    let best = null, bd = .085;
+    st.letters.forEach(l => {
+      if (l.burning || l.gone) return;
+      const p = letterPos(l), d = Math.hypot(p.x - px, p.y - py);
+      if (d < bd) { bd = d; best = l; }
+    });
+    if (!best) return;
+    const p = letterPos(best);
+    if (best.hp > 1) {
+      best.hp--; best.hitFlash = 1; best.dur *= .8; sSeal();
+      for (let i = 0; i < 6; i++) st.embers.push({ x: p.x, y: p.y, vx: rnd(-.2, .2), vy: rnd(-.25, 0), a: 1, c: '230,190,90' });
+      return;
+    }
+    best.burning = .001;
+    for (let i = 0; i < 14; i++) st.embers.push({ x: p.x, y: p.y, vx: rnd(-.25, .25), vy: rnd(-.35, -.05), a: 1, c: '255,150,60' });
+    sBurn();
+    if (best.a.brog) { st.brogBurned = true; pushFeed('sent', 'Досье на Брога сгорело!'); bump('shake'); }
+    else { st.burned.push(best.a); pushFeed('burn', `${best.a.name} — сожжено`); }
+    renderStatus(); renderPanel();
+  }
+
+  function pushFeed(kind, text) { st.feed.unshift({ kind, text }); st.feed = st.feed.slice(0, 4); }
+  function finish() { st.phase = 'done'; sWin(); renderAll(); }
+
+  // ---------- input ----------
+  stage.addEventListener('pointerdown', e => {
+    if (!st) return;
+    const r = stage.getBoundingClientRect();
+    const px = (e.clientX - r.left) / r.width, py = (e.clientY - r.top) / r.height;
+    if (st.phase === 'cut') { e.preventDefault(); tapThread(px, py); }
+    else if (st.phase === 'catch') { e.preventDefault(); hitLetter(px, py); }
+  });
+  window.addEventListener('pointermove', e => {
+    const r = stage.getBoundingClientRect();
+    pointer.x = (e.clientX - r.left) / r.width; pointer.y = (e.clientY - r.top) / r.height;
+  });
+
+  // ---------- DOM ----------
+  function renderStatus() {
+    const el = $('status'); el.hidden = !st;
+    if (!st) return;
+    if (st.phase === 'lock' || st.phase === 'opened') {
+      const L = st.lock;
+      el.innerHTML = `<span class="phase">0 · замок</span><span>ход Картера: <b>${L.turn}</b> из ${LOCK_TURNS}</span><span>штифты: <b>${L.pins}</b>/${LOCK_NEED}</span><span class="sent">ушло: <b>${st.sent.length + L.leak}</b></span>`;
+      return;
+    }
+    if (st.phase === 'cut') {
+      const left = st.threads.filter(t => !t.cut).length;
+      el.innerHTML = `<span class="phase">1 · нити</span><span>осталось: <b>${left}</b></span><span>импульс: <b>${Math.ceil(st.pulseT)}с</b></span><span class="sent">ушло: <b>${st.sent.length}</b></span>`;
+    } else {
+      el.innerHTML = `<span class="phase">2 · досье</span><span>в клетке: <b>${st.pool.length}</b></span><span class="saved">сожжено: <b>${st.burned.length}</b></span><span class="sent">ушло: <b>${st.sent.length}</b></span>`;
+    }
+  }
+  function feedHTML() {
+    if (!st.feed.length) return '';
+    return `<ul class="feed">${st.feed.map(f => `<li class="${f.kind}"><span class="k">${f.kind === 'sent' ? '✕' : '✓'}</span>${f.text}</li>`).join('')}</ul>`;
+  }
+  const RULES = `<ol class="rules">
+      <li><b>Вскрой клетку.</b> По ходам: 5 штифтов за 6 ходов.</li>
+      <li><b>Порви нити.</b> 3 нажатия на нить. Не трогай ту, на которую смотрит луч.</li>
+      <li><b>Сожги досье.</b> Жми по птицам. Золотая печать — 2 раза.</li>
+      <li><b>Чёрную печать не трогай</b> — это досье на Брога.</li>
+    </ol>`;
+  function renderPanel() {
+    const p = $('panel');
+    if (!st) {
+      p.innerHTML = `<h3>Протокол «Мёртвая рука»</h3>
+        <p>Клетка рассылает страже досье на всех людей Красного глаза. Останови её.</p>
+        ${RULES}
+        <div class="actions"><button class="btn primary" type="button" id="startBtn">Начать</button></div>`;
+      $('startBtn').onclick = () => { audioInit(); newGame(); };
+      return;
+    }
+    if (st.phase === 'lock') {
+      const L = st.lock, c = L.card;
+      let html = ``;
+      if (L.step === 'lost') {
+        html += `<h3>Ход потерян</h3>
+          <div class="actions"><button class="btn primary" type="button" id="nextBtn">Конец хода</button></div>`;
+      } else {
+        html += `<h3>${c.title}</h3><p>${c.text}</p>`;
+        const dcNote = o => o.auto ? `без броска · ${o.auto}` : o.dc ? `${o.check}, СЛ ${o.dc + L.dcUp}` : o.check;
+        if (L.step === 'choose') {
+          if (L.adv) html += `<p class="sub">Бросок с преимуществом</p>`;
+          if (L.dcUp) html += `<p class="sub">СЛ +2</p>`;
+          html += `<div class="actions">${c.opts.map((o, i) => `<button class="btn" type="button" data-o="${i}">${o.label}<small>${dcNote(o)} · +${o.gain} штифт${o.gain > 1 ? 'а' : ''}</small></button>`).join('')}</div>`;
+        } else if (L.step === 'roll') {
+          html += `<p class="note">${L.opt.label}: бросай ${dcNote(L.opt)}${L.adv ? ' с преимуществом' : ''}.</p>
+            <div class="actions"><button class="btn bad" type="button" data-r="0">Не прошёл</button><button class="btn good" type="button" data-r="1">Прошёл</button><button class="btn ghost" type="button" data-r="x">Назад</button></div>`;
+        } else if (L.step === 'result') {
+          const done = L.pins >= LOCK_NEED, last = L.turn >= LOCK_TURNS;
+          html += `<p class="note">${L.res}</p>
+            <div class="actions"><button class="btn primary" type="button" id="nextBtn">${done ? 'Вскрыть клетку' : last ? 'Время вышло…' : 'Конец хода'}</button></div>`;
+        }
+      }
+      p.innerHTML = html + feedHTML();
+      p.querySelectorAll('[data-o]').forEach(b => b.onclick = () => chooseOpt(+b.dataset.o));
+      p.querySelectorAll('[data-r]').forEach(b => b.onclick = () => { if (b.dataset.r === 'x') { st.lock.step = 'choose'; renderPanel(); } else resolveOpt(b.dataset.r === '1'); });
+      const nb = $('nextBtn'); if (nb) nb.onclick = nextLockTurn;
+      return;
+    }
+    if (st.phase === 'opened') {
+      p.innerHTML = `<h3>Дальше — в реальном времени</h3>
+        <div class="actions"><button class="btn primary" type="button" id="goBtn">Поехали</button></div>${feedHTML()}`;
+      $('goBtn').onclick = startArcade;
+      return;
+    }
+    if (st.phase === 'cut') {
+      p.innerHTML = `<h3>Рви нити</h3>${feedHTML()}`;
+    } else if (st.phase === 'ready' || st.phase === 'catch') {
+      p.innerHTML = `<h3>Жги досье</h3>${feedHTML()}`;
+    } else if (st.phase === 'done') {
+      const li = arr => arr.map(a => `<li>${a.vip ? '<b>' + a.name + '</b>' : a.name} <span>— ${a.role}</span></li>`).join('') || '<li><span>никого</span></li>';
+      const notes = [];
+      if (st.sent.some(a => a.name === 'Вискас')) notes.push('Досье на <b>Вискаса</b> у стражи: у героя будут проблемы с законом.');
+      if (st.sent.some(a => a.name === 'Бобби')) notes.push('Досье на <b>Бобби</b> у стражи: кота в доспехах ищут по всему городу.');
+      notes.push(st.brogBurned ? 'Досье на Брога <b>сгорело</b>: у стражи на него ничего нет.' : 'Досье на Брога <b>ушло страже</b>: на него теперь охотится закон.');
+      const total = AGENTS.length;
+      p.innerHTML = `<h3>${st.sent.length === 0 ? 'Никто не засвечен' : `Засвечено: ${st.sent.length} из ${total}`}</h3>
+        <div class="results">
+          <div class="s"><h4>Ушло страже</h4><ul>${li(st.sent)}</ul></div>
+          <div class="k"><h4>Спасены</h4><ul>${li(st.burned)}</ul></div>
+        </div>
+        <p class="dmnote"><b>ГМ:</b> засвеченных агентов к утру берёт стража. Спасённые знают, кто сжёг их досье, и обязаны героям. ${notes.join(' ')}</p>
+        <div class="actions"><button class="btn primary" type="button" id="againBtn">Сыграть заново</button></div>`;
+      $('againBtn').onclick = () => { st = null; renderAll(); };
+    }
+  }
+  function renderOverlay() {
+    const ov = $('stageOverlay');
+    if (st && st.phase === 'opened') {
+      const ok = st.diff <= 0;
+      ov.innerHTML = `<div class="overlay"><h2>${ok ? 'Замок вскрыт' : 'Глаз открылся сам'}</h2><p>${st.diff < 0 ? 'Быстро. Глаз будет медленнее.' : ok ? 'Глаз заметил Картера.' : 'Не успел. Часть досье уже улетела.'}</p></div>`;
+      return;
+    }
+    if (st && st.phase === 'ready') {
+      ov.innerHTML = `<div class="overlay"><h2>Нити порваны</h2><p>Сейчас полетят все досье разом.</p><div class="big">${st.countdown > 0 ? st.countdown : ''}</div></div>`;
+    } else if (st && st.phase === 'done') {
+      const ok = st.sent.length === 0;
+      ov.innerHTML = `<div class="overlay"><h2>${ok ? 'Глаз закрыт' : 'Глаз погас'}</h2><p>${ok ? 'Ни одно досье не ушло.' : 'Часть имён уже у стражи.'}</p></div>`;
+    } else ov.innerHTML = '';
+  }
+  function renderAll() { renderStatus(); renderPanel(); renderOverlay(); }
+
+  // ---------- loop ----------
+  function resize() { dpr = Math.min(2, window.devicePixelRatio || 1); S = stage.clientWidth; cv.width = Math.round(S * dpr); cv.height = Math.round(S * dpr); }
+  new ResizeObserver(resize).observe(stage);
+
+  const idle = { eyeOpen: .85, blinkT: 3, blinking: 0 };
+  let last = performance.now(), statusTick = 0;
+  function frame(now) {
+    const dt = Math.min(.05, (now - last) / 1000); last = now;
+    update(dt); draw(now);
+    requestAnimationFrame(frame);
+  }
+
+  function update(dt) {
+    const g = st || idle;
+    g.blinkT -= dt;
+    if (g.blinkT <= 0 && !g.blinking && !(st && st.phase === 'cut')) { g.blinking = .22; g.blinkT = rnd(2, 5); }
+    if (g.blinking) g.blinking = Math.max(0, g.blinking - dt);
+    g.eyeOpen = g.blinking ? Math.abs(g.blinking - .11) / .11 * .85 : (st && st.phase === 'cut' ? 1 : .85);
+    if (!st) return;
+    const m = reduceMotion ? .6 : 1;
+    if (st.phase === 'cut') {
+      st.gaze += st.gazeV * dt * m;
+      st.flipT -= dt;
+      if (st.flipT <= 0) {
+        st.flipT = rnd(.9, 2.4);
+        const r = Math.random();
+        if (r < .45) st.gazeV *= -1;
+        else if (r < .65) { const live = st.threads.filter(t => !t.cut); if (live.length) st.gaze = live[Math.floor(Math.random() * live.length)].ang; } // snaps onto a thread
+        st.gazeV = Math.sign(st.gazeV) * Math.min(3.2, Math.abs(st.gazeV) * rnd(.85, 1.25));
+      }
+      st.caughtT = Math.max(0, st.caughtT - dt);
+      st.pulseT -= dt;
+      if (st.pulseT <= .8 && st.pulseAnim === 0) { st.pulseAnim = .001; sPulse(); }
+      if (st.pulseAnim) st.pulseAnim += dt / .8;
+      if (st.pulseT <= 0) { leakOne('ушло с импульсом'); st.pulseT = st.pulseEvery; st.pulseAnim = 0; bump('flash'); renderPanel(); }
+      st.threads.forEach(t => { if (t.cut) t.cutT = Math.min(1, t.cutT + dt * 2); });
+      statusTick -= dt; if (statusTick <= 0) { statusTick = .25; renderStatus(); }
+    } else if (st.phase !== 'lock' && st.phase !== 'opened') st.cageOpen = Math.min(1, st.cageOpen + dt * 1.5);
+    if (st.phase === 'catch') {
+      st.spawnT -= dt;
+      const prog = st.spawned / st.total;
+      if (st.spawnT <= 0 && st.pool.length) {
+        spawnLetter();
+        if (st.pool.length && Math.random() < .18 + prog * .25) spawnLetter(); // pairs
+        st.spawnT = Math.max(.32, pick(1.25, 1.0, .85) - prog * .65) * rnd(.7, 1.25);
+      }
+      let changed = false;
+      st.letters.forEach(l => {
+        l.hitFlash = Math.max(0, l.hitFlash - dt * 3);
+        if (l.burning) { l.burning += dt * 2.5; if (l.burning >= 1) l.gone = true; return; }
+        l.t += dt / l.dur * m; l.rot += l.spin * dt;
+        if (l.t >= 1) {
+          l.gone = true; changed = true; sSent();
+          if (l.a.brog) { st.brogSent = true; pushFeed('burn', 'Досье на Брога ушло страже'); }
+          else { st.sent.push(l.a); pushFeed('sent', `${l.a.name} — ушло страже`); bump('flash'); }
+        }
+      });
+      st.letters = st.letters.filter(l => !l.gone);
+      if (changed) { renderStatus(); renderPanel(); }
+      if (!st.pool.length && !st.letters.length) finish();
+    }
+    st.embers.forEach(e => { e.x += e.vx * dt; e.y += e.vy * dt; e.vy += .3 * dt; e.a -= dt * 1.4; });
+    st.embers = st.embers.filter(e => e.a > 0);
+  }
+
+  function puff(x, y, r, c, a) {
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, `rgba(${c},${a})`); g.addColorStop(1, `rgba(${c},0)`);
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+  }
+
+  function draw(now) {
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, S, S);
+    const t = now / 1000, cx = CX * S, cy = CY * S, R = CAGE_R * S;
+    const heat = st ? (st.phase === 'cut' ? .3 + st.threads.filter(x => x.cut).length * .06 : .6) : .2;
+    puff(cx, cy, S * .55, '180,30,20', Math.max(0, .08 + heat * .1 + Math.sin(t * 3) * .02));
+    drawWindows();
+    if (st && st.phase === 'cut') { drawGaze(cx, cy); drawThreads(cx, cy, t); }
+    if (st && (st.phase === 'lock' || st.phase === 'opened')) drawPins(cx, cy, t);
+
+    ctx.strokeStyle = '#6e5230'; ctx.lineWidth = S * .008; ctx.setLineDash([S * .018, S * .01]);
+    ctx.beginPath(); ctx.moveTo(cx, 0); ctx.lineTo(cx, cy - R); ctx.stroke(); ctx.setLineDash([]);
+    drawEye(cx, cy, R, t);
+    drawCage(cx, cy, R);
+    if (st) {
+      st.letters.forEach(drawLetter);
+      st.embers.forEach(e => puff(e.x * S, e.y * S, S * .012, e.c, e.a));
+    }
+  }
+
+  function drawGaze(cx, cy) {
+    const L = S * .75, a0 = st.gaze - CONE, a1 = st.gaze + CONE;
+    const g = ctx.createRadialGradient(cx, cy, CAGE_R * S * .5, cx, cy, L);
+    const k = st.caughtT > 0 ? .55 : .26;
+    g.addColorStop(0, `rgba(255,60,40,${k})`); g.addColorStop(1, 'rgba(255,60,40,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.moveTo(cx, cy); ctx.arc(cx, cy, L, a0, a1); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,90,60,.35)'; ctx.lineWidth = 1;
+    [a0, a1].forEach(a => { ctx.beginPath(); ctx.moveTo(cx + Math.cos(a) * CAGE_R * S, cy + Math.sin(a) * CAGE_R * S); ctx.lineTo(cx + Math.cos(a) * L, cy + Math.sin(a) * L); ctx.stroke(); });
+  }
+
+  function drawThreads(cx, cy, t) {
+    st.threads.forEach((th, i) => {
+      const r0 = CAGE_R * S * 1.02, r1 = th.len * S;
+      const dx = Math.cos(th.ang), dy = Math.sin(th.ang);
+      const watched = !th.cut && angDiff(th.ang, st.gaze) < CONE;
+      if (th.cut) {
+        // two halves snapping back
+        const k = th.cutT, mid = (r0 + r1) / 2, gap = (r1 - r0) * .5 * k;
+        ctx.strokeStyle = `rgba(255,75,54,${.35 * (1 - k * .7)})`; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.moveTo(cx + dx * r0, cy + dy * r0); ctx.lineTo(cx + dx * (mid - gap), cy + dy * (mid - gap)); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(cx + dx * (mid + gap), cy + dy * (mid + gap)); ctx.lineTo(cx + dx * r1, cy + dy * r1); ctx.stroke();
+        return;
+      }
+      const frayed = THREAD_HP - th.hp;
+      const wob = Math.sin(t * 6 + th.wob) * S * (.006 + frayed * .004);
+      const nx = -dy, ny = dx, mx = cx + dx * (r0 + r1) / 2 + nx * wob, my = cy + dy * (r0 + r1) / 2 + ny * wob;
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = watched ? 'rgba(255,230,210,.95)' : `rgba(255,75,54,${.75 - frayed * .15})`;
+      ctx.lineWidth = S * (.009 - frayed * .002);
+      ctx.beginPath(); ctx.moveTo(cx + dx * r0, cy + dy * r0); ctx.quadraticCurveTo(mx, my, cx + dx * r1, cy + dy * r1); ctx.stroke();
+      if (watched) { ctx.save(); ctx.shadowColor = '#ff4b36'; ctx.shadowBlur = S * .03; ctx.stroke(); ctx.restore(); }
+      // pulse travelling outward
+      if (st.pulseAnim > 0 && st.pulseAnim < 1) {
+        const rr = r0 + (r1 - r0) * st.pulseAnim;
+        puff(cx + dx * rr, cy + dy * rr, S * .03, '255,90,50', .9);
+      }
+      // anchor pin at the far end
+      ctx.fillStyle = '#b98a42'; ctx.beginPath(); ctx.arc(cx + dx * r1, cy + dy * r1, S * .012, 0, Math.PI * 2); ctx.fill();
+      // fray marks
+      for (let k = 0; k < frayed; k++) {
+        const rr = r0 + (r1 - r0) * (.45 + k * .1);
+        ctx.strokeStyle = 'rgba(255,220,180,.8)'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(cx + dx * rr - nx * S * .015, cy + dy * rr - ny * S * .015); ctx.lineTo(cx + dx * rr + nx * S * .015, cy + dy * rr + ny * S * .015); ctx.stroke();
+      }
+    });
+  }
+
+  function drawPins(cx, cy, t) {
+    const L = st.lock, RR = CAGE_R * S * 1.45;
+    for (let i = 0; i < LOCK_NEED; i++) {
+      const a = -Math.PI / 2 + (i - (LOCK_NEED - 1) / 2) * .42 + Math.PI;
+      const x = cx + Math.cos(a) * RR, y = cy + Math.sin(a) * RR;
+      const on = i < L.pins;
+      ctx.fillStyle = on ? '#8fb27a' : '#2a1f18';
+      ctx.strokeStyle = on ? '#cfe6bf' : '#b98a42'; ctx.lineWidth = S * .004;
+      ctx.beginPath(); ctx.arc(x, y, S * .022, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      if (on) puff(x, y, S * .05, '143,178,122', .35);
+      ctx.strokeStyle = on ? 'rgba(207,230,191,.8)' : 'rgba(185,138,66,.6)';
+      ctx.beginPath(); ctx.moveTo(x, y - S * .012); ctx.lineTo(x, y + S * .012); ctx.stroke();
+    }
+    // padlock plate under the cage
+    const px = cx, py = cy + CAGE_R * S * 1.05;
+    ctx.fillStyle = '#9b7236'; ctx.fillRect(px - S * .04, py - S * .02, S * .08, S * .05);
+    ctx.strokeStyle = '#e7c06e'; ctx.lineWidth = S * .005; ctx.beginPath(); ctx.arc(px, py - S * .02, S * .025, Math.PI, 0); ctx.stroke();
+    ctx.fillStyle = '#1a120c'; ctx.beginPath(); ctx.arc(px, py + S * .006, S * .007, 0, Math.PI * 2); ctx.fill();
+  }
+
+  function drawWindows() {
+    WINDOWS.forEach(w => {
+      const x = w.x * S, y = w.y * S, ww = S * .07, hh = S * .3;
+      ctx.beginPath();
+      ctx.moveTo(x - ww, y + hh / 2); ctx.lineTo(x - ww, y - hh / 2 + ww); ctx.arc(x, y - hh / 2 + ww, ww, Math.PI, 0); ctx.lineTo(x + ww, y + hh / 2); ctx.closePath();
+      const g = ctx.createLinearGradient(x, y - hh / 2, x, y + hh / 2);
+      g.addColorStop(0, 'rgba(120,140,170,.28)'); g.addColorStop(1, 'rgba(40,50,70,.18)');
+      ctx.fillStyle = g; ctx.fill();
+      ctx.strokeStyle = 'rgba(160,150,130,.35)'; ctx.lineWidth = S * .004; ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x, y - hh / 2); ctx.lineTo(x, y + hh / 2); ctx.moveTo(x - ww, y); ctx.lineTo(x + ww, y); ctx.stroke();
+    });
+  }
+
+  function drawEye(cx, cy, R, t) {
+    const g = st || idle;
+    const ew = R * .78, eh = R * .5 * g.eyeOpen;
+    ctx.save();
+    ctx.beginPath(); ctx.moveTo(cx - ew, cy);
+    ctx.quadraticCurveTo(cx, cy - eh * 2, cx + ew, cy); ctx.quadraticCurveTo(cx, cy + eh * 2, cx - ew, cy); ctx.closePath();
+    const sg = ctx.createRadialGradient(cx, cy, 0, cx, cy, ew);
+    sg.addColorStop(0, '#d8b06a'); sg.addColorStop(.7, '#8a4a22'); sg.addColorStop(1, '#3a120a');
+    ctx.fillStyle = sg; ctx.fill(); ctx.clip();
+    let tx = pointer.x - CX, ty = pointer.y - CY;
+    if (st && st.phase === 'cut') { tx = Math.cos(st.gaze) * .3; ty = Math.sin(st.gaze) * .3; }
+    if (st && st.phase === 'catch' && st.letters.length) { const p = letterPos(st.letters[st.letters.length - 1]); tx = p.x - CX; ty = p.y - CY; }
+    const ox = Math.max(-1, Math.min(1, tx * 4)) * R * .24, oy = Math.max(-1, Math.min(1, ty * 4)) * R * .12;
+    const ir = R * .34;
+    const ig = ctx.createRadialGradient(cx + ox, cy + oy, ir * .1, cx + ox, cy + oy, ir);
+    ig.addColorStop(0, '#ff7a3c'); ig.addColorStop(.55, '#d62a1a'); ig.addColorStop(1, '#5a0a06');
+    ctx.fillStyle = ig; ctx.beginPath(); ctx.arc(cx + ox, cy + oy, ir, 0, Math.PI * 2); ctx.fill();
+    const pw = st && st.caughtT > 0 ? ir * .05 : ir * (.14 + Math.sin(t * 2) * .02);
+    ctx.fillStyle = '#080404';
+    ctx.beginPath(); ctx.ellipse(cx + ox, cy + oy, Math.max(1, pw), ir * .82, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = 'rgba(255,240,220,.6)'; ctx.beginPath(); ctx.arc(cx + ox - ir * .3, cy + oy - ir * .35, ir * .09, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+    ctx.strokeStyle = '#2a0e08'; ctx.lineWidth = R * .05;
+    ctx.beginPath(); ctx.moveTo(cx - ew, cy); ctx.quadraticCurveTo(cx, cy - eh * 2, cx + ew, cy); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cx - ew, cy); ctx.quadraticCurveTo(cx, cy + eh * 2, cx + ew, cy); ctx.stroke();
+  }
+
+  function drawCage(cx, cy, R) {
+    const open = st ? st.cageOpen : 0;
+    ctx.strokeStyle = '#b98a42'; ctx.lineWidth = S * .006;
+    ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.stroke();
+    ctx.lineWidth = S * .0045; ctx.strokeStyle = `rgba(185,138,66,${.85 - open * .5})`;
+    [.38, .74].forEach(k => { const kk = k + open * (1 - k); ctx.beginPath(); ctx.ellipse(cx, cy, R * kk, R, 0, 0, Math.PI * 2); ctx.stroke(); });
+    ctx.beginPath(); ctx.ellipse(cx, cy, R, R * .3, 0, 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = '#e7c06e'; ctx.beginPath(); ctx.arc(cx, cy - R, S * .012, 0, Math.PI * 2); ctx.fill();
+  }
+
+  function drawLetter(l) {
+    const p = letterPos(l), x = p.x * S, y = p.y * S;
+    const w = S * (.15 + Math.max(0, l.a.name.length - 8) * .009), h = S * .095;
+    const b = l.burning ? Math.min(1, l.burning) : 0;
+    ctx.save(); ctx.translate(x, y); ctx.rotate(l.rot * .4 + Math.sin(l.t * 9) * .08);
+    const sc = (1 - b * .7) * (1 + l.hitFlash * .12); ctx.scale(sc, sc);
+    ctx.shadowColor = l.a.vip ? 'rgba(231,192,110,.6)' : 'rgba(0,0,0,.6)'; ctx.shadowBlur = S * .02;
+    ctx.fillStyle = b ? `rgb(${Math.round(233 - b * 40)},${Math.round(150 - b * 100)},${Math.round(90 - b * 80)})` : '#e9dcbf';
+    ctx.fillRect(-w / 2, -h / 2, w, h);
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = 'rgba(58,42,28,.5)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(-w / 2, -h / 2); ctx.lineTo(0, h * .05); ctx.lineTo(w / 2, -h / 2); ctx.stroke();
+    ctx.fillStyle = l.a.brog ? '#111' : l.a.vip ? '#d4a23a' : '#a01d14';
+    ctx.beginPath(); ctx.arc(0, h * .05, h * .2, 0, Math.PI * 2); ctx.fill();
+    ctx.textAlign = 'center';
+    if (l.a.brog) { ctx.fillStyle = '#c9b38a'; ctx.font = `700 ${Math.round(h * .24)}px "JetBrains Mono", monospace`; ctx.textBaseline = 'middle'; ctx.fillText('Б', 0, h * .06); }
+    else if (l.a.vip) {
+      if (l.hp < 2) { ctx.strokeStyle = '#3a2a1c'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(-h * .15, -h * .1); ctx.lineTo(h * .02, h * .07); ctx.lineTo(-h * .05, h * .2); ctx.stroke(); }
+      else { ctx.fillStyle = '#fff1c4'; ctx.beginPath(); ctx.arc(0, h * .05, h * .07, 0, Math.PI * 2); ctx.fill(); }
+    }
+    else { ctx.fillStyle = '#ff6a4a'; ctx.beginPath(); ctx.arc(0, h * .05, h * .07, 0, Math.PI * 2); ctx.fill(); }
+    ctx.fillStyle = '#3a2a1c'; ctx.textBaseline = 'alphabetic';
+    const fs = Math.max(10, Math.round(S * .028));
+    ctx.font = `${fs}px "Marck Script", "Segoe Script", cursive`;
+    ctx.fillText(l.a.name, 0, h / 2 - h * .1);
+    if (b) puff(0, 0, w * .7, '255,120,40', .7 * (1 - b * .5));
+    ctx.restore();
+  }
+
+  resize(); renderAll(); requestAnimationFrame(frame);
+})();
+</script>
